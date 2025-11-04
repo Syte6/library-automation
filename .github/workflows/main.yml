@@ -1,37 +1,45 @@
 name: Build & Publish
 
 on:
-    push:
-      tags:
-        - 'v*'          # v1.0.0 gibi tag'ler tetiklesin
+  push:
+    tags:
+      - 'v*'
 
 jobs:
-    build-linux:
-      runs-on: ubuntu-latest
-      steps:
-        - uses: actions/checkout@v3
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-        - uses: actions/setup-node@v3
-          with:
-            node-version: '20'
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
 
-        - run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
-        - run: npm run dist -- --linux
-          env:
-            GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      - name: Build Linux artifacts
+        run: npm run dist -- --linux
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
-    build-windows:
-      runs-on: windows-latest
-      steps:
-        - uses: actions/checkout@v3
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-        - uses: actions/setup-node@v3
-          with:
-            node-version: '20'
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
 
-        - run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
-        - run: npm run dist -- --win
-          env:
-            GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      - name: Build Windows artifacts
+        run: npm run dist -- --win
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
