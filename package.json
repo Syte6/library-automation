@@ -1,0 +1,58 @@
+{
+  "name": "library-automation",
+  "version": "1.0.0",
+  "description": "Masaüstü odaklı kütüphane otomasyon sistemi çekirdeği",
+  "main": "src/electron/main.js",
+  "scripts": {
+    "start": "electron --no-sandbox .",
+    "cli": "node src/index.js",
+    "test": "node src/tests/run-tests.js",
+    "dist": "electron-builder"
+  },
+  "keywords": [
+    "kutuphane",
+    "otomasyon",
+    "masaustu"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^39.0.0",
+    "electron-builder": "^26.0.12"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.2"
+  },
+  "build": {
+    "appId": "com.example.libraryautomation",
+    "productName": "LibraryAutomation",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "data/**/*",
+      "!src/tests/**"
+    ],
+    "extraResources": [
+      {
+        "from": "data",
+        "to": "data"
+      }
+    ],
+    "asar": true,
+    "win": {
+      "target": "nsis",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Syte6",
+        "repo": "library-automation"
+      }
+    ]
+  }
+}

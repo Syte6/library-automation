@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Kütüphane Otomasyonu</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="top-bar">
+        <div>
+          <h1>Kütüphane Otomasyonu</h1>
+          <p>Envanteri, üyeleri ve ödünç işlemlerini tek ekranda yönetin.</p>
+        </div>
+        <div class="top-actions">
+          <button id="refresh-btn" class="secondary">Verileri Yenile</button>
+        </div>
+      </header>
+
+      <nav class="tab-bar">
+        <button class="tab-button active" data-tab="dashboard">Kontrol Paneli</button>
+        <button class="tab-button" data-tab="books">Kitaplar</button>
+        <button class="tab-button" data-tab="members">Üyeler</button>
+        <button class="tab-button" data-tab="loans">Ödünç İşlemleri</button>
+      </nav>
+
+      <section id="dashboard" class="view active">
+        <div class="stats-grid">
+          <article class="stat-card">
+            <header>
+              <span class="stat-label">Kitap Başlığı</span>
+              <span class="stat-icon">📚</span>
+            </header>
+            <p class="stat-value" id="stat-books">0</p>
+            <p class="stat-sub" id="stat-inventory">Kullanılabilir 0 / 0 kopya</p>
+          </article>
+          <article class="stat-card">
+            <header>
+              <span class="stat-label">Üyeler</span>
+              <span class="stat-icon">🧑‍🤝‍🧑</span>
+            </header>
+            <p class="stat-value" id="stat-members">0</p>
+            <p class="stat-sub">Aktif kayıtlar</p>
+          </article>
+          <article class="stat-card">
+            <header>
+              <span class="stat-label">Ödünç İşlemleri</span>
+              <span class="stat-icon">🔄</span>
+            </header>
+            <p class="stat-value" id="stat-loans">0</p>
+            <p class="stat-sub">Toplam işlem sayısı</p>
+          </article>
+          <article class="stat-card">
+            <header>
+              <span class="stat-label">Emanetler</span>
+              <span class="stat-icon">⏳</span>
+            </header>
+            <p class="stat-value" id="stat-active-loans">0</p>
+            <p class="stat-sub">Şu anda ödünçte</p>
+          </article>
+        </div>
+
+        <div class="split-layout">
+          <section class="panel">
+            <header class="panel-header">
+              <h2>Son Hareketler</h2>
+            </header>
+            <ul class="activity-list" id="activity-feed"></ul>
+          </section>
+
+          <section class="panel">
+            <header class="panel-header">
+              <h2>Hızlı İpuçları</h2>
+            </header>
+            <ul class="tips-list">
+              <li>Ödünç İşlemleri sekmesiyle kitap verip almaları tek tıkla halledin.</li>
+              <li>Üyelerin iletişim bilgilerini gecikme hatırlatmaları için güncel tutun.</li>
+              <li>Envanter özetini düzenli dışa aktararak yedeklerinizi güçlendirin.</li>
+            </ul>
+          </section>
+        </div>
+      </section>
+
+      <section id="books" class="view">
+        <div class="split-layout">
+          <section class="panel form-panel">
+            <header class="panel-header">
+              <div>
+                <h2>Kitap Ekle</h2>
+                <p>Yeni bir başlık eklemek için bilgileri doldurun.</p>
+              </div>
+            </header>
+            <form id="book-form">
+              <div class="cover-uploader">
+                <div class="cover-preview" id="book-cover-preview">
+                  <span>Kapak resmi seçilmedi</span>
+                </div>
+                <div class="cover-actions">
+                  <input type="file" id="book-cover-file" accept="image/*" hidden />
+                  <button type="button" id="book-cover-select" class="secondary">Dosyadan Seç</button>
+                  <button type="button" id="book-cover-camera" class="secondary">Kamera ile Çek</button>
+                  <button type="button" id="book-cover-clear" class="text">Temizle</button>
+                </div>
+              </div>
+              <label class="title-field">
+                <div class="field-heading">
+                  <span>Başlık</span>
+                </div>
+                <div class="input-with-suggestions">
+                  <input type="text" name="title" id="book-title-input" placeholder="Kitap başlığı" autocomplete="off" required />
+                  <div id="title-suggestion-list" class="suggestion-list hidden"></div>
+                </div>
+              </label>
+              <label>
+                Yazar
+                <input type="text" name="author" placeholder="Yazar adı" required />
+              </label>
+              <label>
+                <div class="field-heading">
+                  <span>ISBN</span>
+                  <div class="field-actions">
+                    <button type="button" id="isbn-fetch-button" class="secondary small">Bilgileri Getir</button>
+                    <button type="button" id="isbn-scan-button" class="secondary small">Barkod Tara</button>
+                  </div>
+                </div>
+                <input type="text" name="isbn" placeholder="978..." />
+              </label>
+              <label>
+                Toplam Kopya
+                <input type="number" name="totalCopies" min="1" value="1" />
+              </label>
+              <label>
+                Yayınevi
+                <input type="text" name="publisher" placeholder="Yayınevi" />
+              </label>
+              <label>
+                Basım Yılı
+                <input type="number" name="publishYear" placeholder="2024" />
+              </label>
+              <label>
+                Sayfa Sayısı
+                <input type="number" name="pageCount" placeholder="312" />
+              </label>
+              <label>
+                Alış Fiyatı (₺)
+                <input type="number" name="purchasePrice" step="0.01" placeholder="0" />
+              </label>
+              <div class="category-selector">
+                <div class="field-heading">
+                  <span>Kategoriler</span>
+                </div>
+                <div id="category-chip-list" class="chip-container"></div>
+                <div class="category-input-row">
+                  <input type="text" id="new-category-input" placeholder="Yeni kategori adı" />
+                  <button type="button" id="add-category-button" class="secondary small">Ekle</button>
+                </div>
+              </div>
+              <label>
+                Notlar
+                <textarea name="note" rows="3" placeholder="Bu kitapla ilgili notlar"></textarea>
+              </label>
+              <button type="submit">Kataloğa Ekle</button>
+            </form>
+          </section>
+
+          <section class="panel table-panel">
+            <header class="panel-header">
+              <div>
+                <h2>Envanter</h2>
+                <p>Başlıklar ve uygunluk özetine göz atın.</p>
+              </div>
+            </header>
+            <div class="table-toolbar">
+              <label>
+                Kategori Filtresi
+                <select id="category-filter">
+                  <option value="">Tümü</option>
+                </select>
+              </label>
+            </div>
+            <div class="table-wrapper">
+              <table id="books-table">
+                <thead>
+                  <tr>
+                    <th>Kapak</th>
+                    <th>Başlık</th>
+                    <th>Yazar</th>
+                    <th>ISBN</th>
+                    <th>Uygun</th>
+                    <th>Toplam</th>
+                    <th>İşlemler</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div class="history-panel">
+              <header class="panel-header">
+                <div>
+                  <h3>Kitap Ödünç Geçmişi</h3>
+                  <p>Bir kitap seçerek geçmiş ödünç kayıtlarını görüntüleyin.</p>
+                </div>
+              </header>
+              <div class="history-controls">
+                <label>
+                  Kitap Seç
+                  <select id="book-history-select"></select>
+                </label>
+              </div>
+              <div class="table-wrapper compact">
+                <table id="book-history-table">
+                  <thead>
+                    <tr>
+                      <th>Üye</th>
+                      <th>Durum</th>
+                      <th>Ödünç</th>
+                      <th>Son Teslim</th>
+                      <th>İade</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="members" class="view">
+        <div class="split-layout">
+          <section class="panel form-panel">
+            <header class="panel-header">
+              <div>
+                <h2>Üye Kaydı</h2>
+                <p>Yeni üyeler hemen hesaplarını kullanabilir.</p>
+              </div>
+            </header>
+            <form id="member-form">
+              <label>
+                Ad Soyad
+                <input type="text" name="name" placeholder="Ad Soyad" required />
+              </label>
+              <label>
+                E-posta
+                <input type="email" name="email" placeholder="ornek@alan.com" />
+              </label>
+              <label>
+                Telefon
+                <input type="text" name="phone" placeholder="+90..." />
+              </label>
+              <label>
+                Notlar
+                <textarea name="note" rows="3" placeholder="Üye ile ilgili notlar"></textarea>
+              </label>
+              <button type="submit">Üyeyi Oluştur</button>
+            </form>
+          </section>
+
+          <section class="panel table-panel">
+            <header class="panel-header">
+              <div>
+                <h2>Üye Dizini</h2>
+                <p>Kayıtlı üyeler ve iletişim bilgileri.</p>
+              </div>
+            </header>
+            <div class="table-wrapper">
+              <table id="members-table">
+                <thead>
+                  <tr>
+                    <th>Ad Soyad</th>
+                    <th>E-posta</th>
+                    <th>Telefon</th>
+                    <th>Kayıt Tarihi</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div class="history-panel">
+              <header class="panel-header">
+                <div>
+                  <h3>Üye Ödünç Geçmişi</h3>
+                  <p>Bir üyenin geçmiş tüm ödünç alma ve iade kayıtlarını inceleyin.</p>
+                </div>
+              </header>
+              <div class="history-controls">
+                <label>
+                  Üye Seç
+                  <select id="member-history-select"></select>
+                </label>
+              </div>
+              <div class="table-wrapper compact">
+                <table id="member-history-table">
+                  <thead>
+                    <tr>
+                      <th>Kitap</th>
+                      <th>Durum</th>
+                      <th>Ödünç</th>
+                      <th>Son Teslim</th>
+                      <th>İade</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="loans" class="view">
+        <div class="split-layout">
+          <section class="panel form-panel">
+            <header class="panel-header">
+              <div>
+                <h2>Kitap Ödünç Ver</h2>
+                <p>Müsait bir kitabı seçerek üyeye teslim edin.</p>
+              </div>
+            </header>
+            <form id="lend-form">
+              <label>
+                Kitap
+                <select name="bookId" required></select>
+              </label>
+              <label>
+                Üye
+                <select name="memberId" required></select>
+              </label>
+              <label>
+                Son Teslim Tarihi
+                <input type="date" name="dueDate" />
+              </label>
+              <label>
+                Notlar
+                <textarea name="note" rows="3" placeholder="Ödünç işlemine not ekleyin"></textarea>
+              </label>
+              <div class="form-actions">
+                <button type="submit">Ödünç Ver</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel table-panel">
+            <header class="panel-header">
+              <div>
+                <h2>Ödünç Kuyruğu</h2>
+                <p>Aktif ve tamamlanan işlemler kronolojik sırayla.</p>
+              </div>
+            </header>
+            <div class="table-wrapper">
+              <table id="loans-table">
+                <thead>
+                  <tr>
+                    <th>Kitap</th>
+                    <th>Üye</th>
+                    <th>Ödünç Tarihi</th>
+                    <th>Son Teslim</th>
+                    <th>Durum</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <footer class="app-footer">
+        <span id="status">Hazır</span>
+      </footer>
+    </div>
+
+    <div id="book-detail-modal" class="detail-modal hidden">
+      <div class="detail-content">
+        <header class="detail-header">
+          <div>
+            <h2>Kitap Detayları</h2>
+            <p id="book-detail-meta"></p>
+          </div>
+          <button id="book-detail-close" class="icon-button" aria-label="Kapat">×</button>
+        </header>
+        <form id="book-detail-form" class="detail-form">
+          <div class="cover-uploader detail">
+            <div class="cover-preview" id="book-detail-cover-preview">
+              <span>Kapak resmi seçilmedi</span>
+            </div>
+            <div class="cover-actions">
+              <input type="file" id="book-detail-cover-file" accept="image/*" hidden />
+              <button type="button" id="book-detail-cover-select" class="secondary">Dosyadan Seç</button>
+              <button type="button" id="book-detail-cover-camera" class="secondary">Kamera ile Çek</button>
+              <button type="button" id="book-detail-cover-clear" class="text">Kapak Kaldır</button>
+            </div>
+          </div>
+          <div class="detail-grid">
+            <label class="title-field">
+              <div class="field-heading">
+                <span>Başlık</span>
+              </div>
+              <div class="input-with-suggestions">
+                <input type="text" id="book-detail-title" autocomplete="off" required />
+                <div id="detail-title-suggestion-list" class="suggestion-list hidden"></div>
+              </div>
+            </label>
+            <label>
+              Yazar
+              <input type="text" id="book-detail-author" required />
+            </label>
+            <label>
+              <div class="field-heading">
+                <span>ISBN</span>
+                <div class="field-actions">
+                  <button type="button" id="book-detail-isbn-fetch" class="secondary small">Bilgileri Getir</button>
+                  <button type="button" id="book-detail-isbn-scan" class="secondary small">Barkod Tara</button>
+                </div>
+              </div>
+              <input type="text" id="book-detail-isbn" />
+            </label>
+            <label>
+              Toplam Kopya
+              <input type="number" id="book-detail-total" min="1" required />
+            </label>
+            <label>
+              Uygun Kopya
+              <input type="number" id="book-detail-available" readonly />
+            </label>
+            <label>
+              Yayınevi
+              <input type="text" id="book-detail-publisher" />
+            </label>
+            <label>
+              Basım Yılı
+              <input type="number" id="book-detail-publish-year" />
+            </label>
+            <label>
+              Sayfa Sayısı
+              <input type="number" id="book-detail-page-count" />
+            </label>
+            <label>
+              Alış Fiyatı (₺)
+              <input type="number" id="book-detail-purchase-price" step="0.01" />
+            </label>
+          </div>
+          <div class="category-selector">
+            <div class="field-heading">
+              <span>Kategoriler</span>
+            </div>
+            <div id="detail-category-chip-list" class="chip-container"></div>
+            <div class="category-input-row">
+              <input type="text" id="detail-new-category-input" placeholder="Yeni kategori adı" />
+              <button type="button" id="detail-add-category-button" class="secondary small">Ekle</button>
+            </div>
+          </div>
+          <label>
+            Notlar
+            <textarea id="book-detail-note" rows="3" placeholder="Kitap notları"></textarea>
+          </label>
+          <div class="detail-actions">
+            <button type="submit">Değişiklikleri Kaydet</button>
+            <button type="button" id="book-detail-cancel" class="secondary">Vazgeç</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="camera-modal" class="camera-modal hidden">
+      <div class="camera-content">
+        <video id="camera-stream" autoplay></video>
+        <p id="camera-info" class="camera-info"></p>
+        <div class="camera-actions">
+          <button id="camera-capture">Fotoğraf Çek</button>
+          <button id="camera-cancel" class="secondary">İptal</button>
+        </div>
+      </div>
+    </div>
+    <script src="renderer.js"></script>
+  </body>
+</html>
