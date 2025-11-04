@@ -1,6 +1,6 @@
 {
   "name": "library-automation",
-  "version": "1.0.1",
+  "version": "0.0.1",
   "description": "Masaüstü odaklı kütüphane otomasyon sistemi çekirdeği",
   "main": "src/electron/main.js",
   "scripts": {
