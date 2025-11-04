@@ -1,11 +1,11 @@
 name: Build & Publish
 
-  on:
+on:
     push:
       tags:
         - 'v*'          # v1.0.0 gibi tag'ler tetiklesin
 
-  jobs:
+jobs:
     build-linux:
       runs-on: ubuntu-latest
       steps:
