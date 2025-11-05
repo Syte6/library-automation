@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('libraryApi', {
   bookHistory: (bookId) => invoke('history:book', { bookId }),
   resolveFile: (filePath) => invoke('file:resolve', { path: filePath }),
   checkForUpdates: () => invoke('updates:check'),
+  getVersion: () => invoke('app:version'),
   onUpdateStatus: (callback) => {
     const channel = 'update-status';
     const handler = (_event, data) => callback(data);

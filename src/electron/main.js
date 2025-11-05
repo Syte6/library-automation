@@ -7,8 +7,9 @@ const { autoUpdater } = require('electron-updater');
 
 app.commandLine.appendSwitch('enable-experimental-web-platform-features');
 const { LibraryService } = require('../services/libraryService');
+const { resolveDataDirectory } = require('../storage/dataStore');
 
-const DATA_ROOT = path.join(__dirname, '../../data');
+const DATA_ROOT = resolveDataDirectory();
 const IMAGES_DIR = path.join(DATA_ROOT, 'images');
 
 function ensureImagesDir() {
@@ -380,4 +381,8 @@ ipcMain.handle('updates:check', async () => {
     sendUpdateStatus('error', { message: error?.message || String(error) });
     throw error;
   }
+});
+
+ipcMain.handle('app:version', async () => {
+  return app.getVersion();
 });

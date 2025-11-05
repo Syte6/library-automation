@@ -2,6 +2,7 @@ const statusEl = document.getElementById('status');
 const refreshBtn = document.getElementById('refresh-btn');
 const tabButtons = document.querySelectorAll('.tab-button');
 const views = document.querySelectorAll('.view');
+const versionEl = document.getElementById('app-version');
 
 const bookForm = document.getElementById('book-form');
 const memberForm = document.getElementById('member-form');
@@ -142,6 +143,23 @@ function translateStatus(status) {
 function setStatus(message, type = 'info') {
   statusEl.textContent = message;
   statusEl.dataset.type = type;
+}
+
+async function updateAppVersion() {
+  if (!versionEl || !api || typeof api.getVersion !== 'function') {
+    return;
+  }
+  try {
+    const version = await api.getVersion();
+    if (version) {
+      versionEl.textContent = `Sürüm ${version}`;
+    } else {
+      versionEl.textContent = 'Sürüm bilinmiyor';
+    }
+  } catch (error) {
+    console.warn('Sürüm bilgisi alınamadı', error);
+    versionEl.textContent = 'Sürüm bilinmiyor';
+  }
 }
 
 function handleUpdateStatus(message) {
@@ -1632,6 +1650,7 @@ loansTableBody.addEventListener('click', async (event) => {
   try {
     updateCoverPreview('create');
     updateCoverPreview('edit');
+    await updateAppVersion();
     await loadCategories();
     await refreshData();
     if (api.checkForUpdates) {
