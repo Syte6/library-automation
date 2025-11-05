@@ -189,9 +189,16 @@ function handleUpdateStatus(message) {
     case 'not-available':
       setStatus('Yeni güncelleme bulunamadı.', 'info');
       break;
-    case 'error':
-      setStatus(`Güncelleme hatası: ${message.info?.message || 'Bilinmeyen hata'}`, 'error');
+    case 'error': {
+      const rawMessage = message.info?.message || message.message || '';
+      console.warn('Güncelleme hatası:', rawMessage || '(bilinmiyor)');
+      if (rawMessage.includes('404')) {
+        setStatus('Güncelleme kaynağı bulunamadı. Denetim atlandı.', 'info');
+      } else {
+        setStatus('Güncelleme denetimi başarısız oldu.', 'error');
+      }
       break;
+    }
     default:
       break;
   }
