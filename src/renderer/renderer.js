@@ -1,5 +1,6 @@
 const statusEl = document.getElementById('status');
 const refreshBtn = document.getElementById('refresh-btn');
+const themeSelect = document.getElementById('theme-select');
 const tabButtons = document.querySelectorAll('.tab-button');
 const views = document.querySelectorAll('.view');
 const versionEl = document.getElementById('app-version');
@@ -128,6 +129,9 @@ const api = window.libraryApi;
 
 let memberHistorySelectedId = null;
 let bookHistorySelectedId = null;
+const THEME_STORAGE_KEY = 'library-theme';
+const AVAILABLE_THEMES = ['light', 'dark', 'midnight', 'forest', 'sunset'];
+const DEFAULT_THEME = 'light';
 
 function translateStatus(status) {
   switch (status) {
@@ -143,6 +147,78 @@ function translateStatus(status) {
 function setStatus(message, type = 'info') {
   statusEl.textContent = message;
   statusEl.dataset.type = type;
+}
+
+function normalizeTheme(theme) {
+  if (AVAILABLE_THEMES.includes(theme)) {
+    return theme;
+  }
+  return DEFAULT_THEME;
+}
+
+function getStoredThemePreference() {
+  try {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    if (AVAILABLE_THEMES.includes(stored)) {
+      return stored;
+    }
+  } catch (error) {
+    console.warn('Tema tercihi okunamadı:', error);
+  }
+
+  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    return AVAILABLE_THEMES.includes('dark') ? 'dark' : DEFAULT_THEME;
+  }
+  return DEFAULT_THEME;
+}
+
+function applyThemePreference(theme) {
+  const normalized = normalizeTheme(theme);
+  document.documentElement.setAttribute('data-theme', normalized);
+  if (themeSelect) {
+    themeSelect.value = normalized;
+  }
+  return normalized;
+}
+
+function persistThemePreference(theme) {
+  const normalized = applyThemePreference(theme);
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, normalized);
+  } catch (error) {
+    console.warn('Tema tercihi kaydedilemedi:', error);
+  }
+}
+
+function initializeTheme() {
+  const storedPreference = getStoredThemePreference();
+  applyThemePreference(storedPreference);
+
+  if (themeSelect) {
+    themeSelect.addEventListener('change', (event) => {
+      persistThemePreference(event.target.value);
+    });
+  }
+
+  let mediaQuery;
+  try {
+    mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  } catch (error) {
+    mediaQuery = null;
+  }
+
+  let hasStoredPreference = false;
+  try {
+    hasStoredPreference = localStorage.getItem(THEME_STORAGE_KEY) !== null;
+  } catch (error) {
+    hasStoredPreference = false;
+  }
+
+  if (mediaQuery && !hasStoredPreference) {
+    mediaQuery.addEventListener('change', (event) => {
+      applyThemePreference(event.matches ? 'dark' : 'light');
+    });
+  }
 }
 
 async function updateAppVersion() {
@@ -224,6 +300,8 @@ tabButtons.forEach((button) => {
 if (api.onUpdateStatus) {
   unsubscribeUpdateStatus = api.onUpdateStatus(handleUpdateStatus);
 }
+
+initializeTheme();
 
 refreshBtn.addEventListener('click', async () => {
   try {
