@@ -11,6 +11,7 @@ const { resolveDataDirectory } = require('../storage/dataStore');
 
 const DATA_ROOT = resolveDataDirectory();
 const IMAGES_DIR = path.join(DATA_ROOT, 'images');
+const UPDATE_CONFIG_FILE = path.join(DATA_ROOT, 'update-config.json');
 
 function ensureImagesDir() {
   fs.mkdirSync(IMAGES_DIR, { recursive: true });
@@ -187,6 +188,27 @@ async function searchBooksByTitle(query) {
 let mainWindow;
 const service = new LibraryService();
 
+function readUpdateToken() {
+  if (process.env.GH_TOKEN) {
+    return process.env.GH_TOKEN.trim();
+  }
+
+  try {
+    const raw = fs.readFileSync(UPDATE_CONFIG_FILE, 'utf8');
+    const config = JSON.parse(raw);
+    const token = config?.githubToken || config?.token;
+    if (typeof token === 'string' && token.trim()) {
+      return token.trim();
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      console.warn('Güncelleme yapılandırması okunamadı:', error);
+    }
+  }
+
+  return null;
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -216,6 +238,14 @@ function sendUpdateStatus(status, info) {
 function setupAutoUpdater() {
   if (!app.isPackaged) {
     return;
+  }
+
+  const updateToken = readUpdateToken();
+  if (updateToken) {
+    autoUpdater.requestHeaders = {
+      ...(autoUpdater.requestHeaders || {}),
+      Authorization: `token ${updateToken}`
+    };
   }
 
   autoUpdater.autoDownload = true;
