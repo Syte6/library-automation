@@ -503,6 +503,17 @@ button.text:hover {
   color: var(--primary-strong);
 }
 
+.link-button.danger {
+  color: var(--danger);
+}
+
+.link-button[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  text-decoration: none;
+  pointer-events: none;
+}
+
 label {
   display: flex;
   flex-direction: column;
@@ -556,6 +567,26 @@ button.secondary:hover {
   background: var(--accent-softer);
 }
 
+button.danger {
+  background: var(--danger);
+  color: #fff;
+  border: none;
+}
+
+button.danger:hover {
+  filter: brightness(1.08);
+}
+
+button.danger.ghost {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid currentColor;
+}
+
+button.danger.ghost:hover {
+  background: rgba(198, 40, 40, 0.12);
+}
+
 .form-actions {
   display: flex;
   justify-content: flex-end;
@@ -566,6 +597,12 @@ button.secondary:hover {
   overflow: auto;
   border-radius: 12px;
   border: 1px solid var(--border);
+}
+
+.table-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
 }
 
 .table-wrapper.compact {
@@ -817,7 +854,13 @@ tbody tr:hover {
 
 .detail-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.detail-actions__group {
+  display: flex;
   gap: 0.75rem;
 }
 
@@ -884,6 +927,7 @@ tbody tr:hover {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 1rem;
 }
 
 #status {
@@ -925,6 +969,17 @@ tbody tr:hover {
 
   .table-wrapper {
     max-height: 340px;
+  }
+
+  .detail-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .detail-actions__group {
+    width: 100%;
+    flex-direction: column;
   }
 }
 .category-selector {
@@ -988,7 +1043,10 @@ tbody tr:hover {
 
 .table-toolbar {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 1rem;
   margin-bottom: 0.8rem;
 }
 
@@ -1000,6 +1058,43 @@ tbody tr:hover {
   gap: 0.4rem;
 }
 
+.table-toolbar .toolbar-search {
+  flex: 1;
+}
+
+.table-toolbar input[type='search'] {
+  border-radius: 999px;
+}
+
 .table-toolbar select {
   min-width: 180px;
+}
+
+.books-insights {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.8rem;
+}
+
+.insight-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0.9rem 1rem;
+  background: var(--surface-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.insight-card span {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.insight-card strong {
+  font-size: 1.3rem;
+  color: var(--text);
 }

@@ -6,6 +6,7 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const { autoUpdater } = require('electron-updater');
 
 app.commandLine.appendSwitch('enable-experimental-web-platform-features');
+app.commandLine.appendSwitch('enable-features', 'BarcodeDetection,ShapeDetection');
 const { LibraryService } = require('../services/libraryService');
 const { resolveDataDirectory } = require('../storage/dataStore');
 
@@ -113,14 +114,94 @@ async function fetchBookByISBN(isbn) {
   }
 }
 
+function normalizeText(value) {
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+  if (value && typeof value.name === 'string') {
+    return value.name.trim();
+  }
+  return '';
+}
+
+function normalizeDescriptionBlock(block) {
+  if (!block) {
+    return null;
+  }
+  if (typeof block === 'string') {
+    return block.trim();
+  }
+  if (Array.isArray(block)) {
+    return block.map(normalizeDescriptionBlock).find(Boolean) || null;
+  }
+  if (typeof block === 'object' && block.value) {
+    return normalizeDescriptionBlock(block.value);
+  }
+  return null;
+}
+
+function collectSubjects(data) {
+  const pools = [];
+  if (Array.isArray(data.subjects)) {
+    pools.push(...data.subjects);
+  }
+  if (Array.isArray(data.subject)) {
+    pools.push(...data.subject);
+  }
+  if (Array.isArray(data.subject_facet)) {
+    pools.push(...data.subject_facet);
+  }
+  const normalized = pools
+    .map((item) => (typeof item === 'string' ? item.trim() : ''))
+    .filter(Boolean);
+  return Array.from(new Set(normalized)).slice(0, 8);
+}
+
+function collectIsbnCandidates(data) {
+  const pools = [];
+  if (Array.isArray(data.isbn)) {
+    pools.push(...data.isbn);
+  }
+  if (Array.isArray(data.isbn_13)) {
+    pools.push(...data.isbn_13);
+  }
+  if (Array.isArray(data.isbn_10)) {
+    pools.push(...data.isbn_10);
+  }
+  if (data.identifiers) {
+    const { isbn_13: isbn13, isbn_10: isbn10 } = data.identifiers;
+    if (Array.isArray(isbn13)) {
+      pools.push(...isbn13);
+    }
+    if (Array.isArray(isbn10)) {
+      pools.push(...isbn10);
+    }
+  }
+  return Array.from(
+    new Set(
+      pools
+        .map((value) => (typeof value === 'string' ? value.replace(/[^0-9Xx]/g, '') : ''))
+        .filter(Boolean)
+    )
+  );
+}
+
 function normalizeOpenLibraryData(data) {
   const result = {
     title: data.title || null,
     subtitle: data.subtitle || null,
     publishDate: data.publish_date || data.publishDate || data.publish_date || null,
-    numberOfPages: data.number_of_pages || data.numberOfPages || null,
+    numberOfPages:
+      data.number_of_pages ||
+      data.numberOfPages ||
+      data.number_of_pages_median ||
+      data.numberOfPagesMedian ||
+      null,
     authors: [],
-    publishers: []
+    publishers: [],
+    subjects: collectSubjects(data),
+    description: normalizeDescriptionBlock(data.description) || normalizeDescriptionBlock(data.notes) || null,
+    isbn: null
   };
 
   if (Array.isArray(data.authors) && data.authors.length > 0) {
@@ -159,6 +240,11 @@ function normalizeOpenLibraryData(data) {
     result.publishers = [data.publisher];
   }
 
+  const isbnCandidates = collectIsbnCandidates(data);
+  if (isbnCandidates.length > 0) {
+    result.isbn = isbnCandidates[0];
+  }
+
   return result;
 }
 
@@ -173,15 +259,30 @@ async function searchBooksByTitle(query) {
     return [];
   }
   return data.docs
-    .map((doc) => ({
-      key: doc.key,
-      title: doc.title,
-      subtitle: doc.subtitle || null,
-      authors: doc.author_name || [],
-      publishYear: doc.first_publish_year || null,
-      isbn: Array.isArray(doc.isbn) ? doc.isbn[0] : null,
-      publisher: Array.isArray(doc.publisher) ? doc.publisher[0] : null
-    }))
+    .map((doc) => {
+      const description = normalizeDescriptionBlock(doc.first_sentence);
+      const subjects = Array.isArray(doc.subject_facet)
+        ? doc.subject_facet.slice(0, 8)
+        : [];
+      const publishYear =
+        doc.first_publish_year ||
+        (Array.isArray(doc.publish_year) ? doc.publish_year[0] : null);
+      const pageCount =
+        doc.number_of_pages_median ||
+        (Array.isArray(doc.number_of_pages) ? doc.number_of_pages[0] : null);
+      return {
+        key: doc.key,
+        title: doc.title,
+        subtitle: doc.subtitle || null,
+        authors: doc.author_name || [],
+        publishYear: publishYear || null,
+        isbn: Array.isArray(doc.isbn) ? doc.isbn[0] : null,
+        publisher: Array.isArray(doc.publisher) ? doc.publisher[0] : null,
+        pageCount: pageCount || null,
+        subjects,
+        description: description || null
+      };
+    })
     .filter((item) => item.title);
 }
 
@@ -283,6 +384,9 @@ function setupAutoUpdater() {
 app.whenReady().then(() => {
   createWindow();
   setupAutoUpdater();
+  ensureBridgeServerRunning().catch((error) => {
+    console.error('Mobil köprü sunucusu devre dışı bırakıldı:', error?.message || error);
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -334,6 +438,12 @@ ipcMain.handle('books:update', async (_event, payload) => {
   }
 
   return updated;
+});
+
+ipcMain.handle('books:delete', async (_event, payload) => {
+  const deleted = await service.deleteBook(payload.id);
+  await deleteCoverImage(payload.id);
+  return deleted;
 });
 
 ipcMain.handle('members:list', async () => {

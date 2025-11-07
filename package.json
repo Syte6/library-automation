@@ -1,6 +1,6 @@
 {
   "name": "library-automation",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Masaüstü odaklı kütüphane otomasyon sistemi çekirdeği",
   "main": "src/electron/main.js",
   "scripts": {
@@ -21,6 +21,7 @@
     "electron-builder": "^26.0.12"
   },
   "dependencies": {
+    "@zxing/library": "^0.21.3",
     "electron-updater": "^6.6.2"
   },
   "build": {
@@ -43,6 +44,18 @@
       }
     ],
     "asar": true,
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        
+      ],
+      "category": "Utility",
+      "artifactName": "${productName}-${version}.${ext}"
+    },
     "win": {
       "target": "nsis",
       "artifactName": "${productName}-Setup-${version}.${ext}"

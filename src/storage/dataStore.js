@@ -80,9 +80,35 @@ class DataStore {
     }
   }
 
+  async resetToDefaultState() {
+    await fs.promises.mkdir(path.dirname(this.filePath), { recursive: true });
+    await fs.promises.writeFile(
+      this.filePath,
+      JSON.stringify(DEFAULT_STATE, null, 2),
+      'utf8'
+    );
+  }
+
   async read() {
-    const raw = await fs.promises.readFile(this.filePath, 'utf8');
-    return JSON.parse(raw);
+    try {
+      const raw = await fs.promises.readFile(this.filePath, 'utf8');
+      if (!raw || !raw.trim()) {
+        await this.resetToDefaultState();
+        return JSON.parse(JSON.stringify(DEFAULT_STATE));
+      }
+      return JSON.parse(raw);
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        await this.resetToDefaultState();
+        return JSON.parse(JSON.stringify(DEFAULT_STATE));
+      }
+      if (error instanceof SyntaxError) {
+        console.warn('Veri dosyası bozulmuş; varsayılan durumla sıfırlanıyor.');
+        await this.resetToDefaultState();
+        return JSON.parse(JSON.stringify(DEFAULT_STATE));
+      }
+      throw error;
+    }
   }
 
   async write(updater) {

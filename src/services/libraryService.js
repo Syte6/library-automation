@@ -40,6 +40,22 @@ class LibraryService {
     return book;
   }
 
+  async deleteBook(id) {
+    const state = await this.store.read();
+    const book = state.books.find((item) => item.id === id);
+    if (!book) {
+      throw new Error(`Belirtilen kimliğe sahip kitap bulunamadı: ${id}`);
+    }
+    const hasActiveLoan = state.loans.some(
+      (loan) => loan.bookId === id && loan.status === 'borrowed'
+    );
+    if (hasActiveLoan) {
+      throw new Error('Ödünçte olan kitap silinemez. Önce tüm kopyaların iade edildiğinden emin olun.');
+    }
+    await this.books.delete(id);
+    return { ...book };
+  }
+
   async listBooks() {
     return this.books.getAll();
   }

@@ -181,12 +181,30 @@
               </div>
             </header>
             <div class="table-toolbar">
+              <label class="toolbar-search">
+                <span>Arama</span>
+                <input type="search" id="book-search-input" placeholder="Başlık, yazar veya ISBN ara" />
+              </label>
               <label>
-                Kategori Filtresi
+                <span>Kategori Filtresi</span>
                 <select id="category-filter">
                   <option value="">Tümü</option>
                 </select>
               </label>
+            </div>
+            <div class="books-insights">
+              <article class="insight-card">
+                <span>Toplam Başlık</span>
+                <strong id="books-insight-total">0</strong>
+              </article>
+              <article class="insight-card">
+                <span>Ödünçte Kopya</span>
+                <strong id="books-insight-borrowed">0</strong>
+              </article>
+              <article class="insight-card">
+                <span>Kategori Sayısı</span>
+                <strong id="books-insight-categories">0</strong>
+              </article>
             </div>
             <div class="table-wrapper">
               <table id="books-table">
@@ -467,8 +485,11 @@
             <textarea id="book-detail-note" rows="3" placeholder="Kitap notları"></textarea>
           </label>
           <div class="detail-actions">
-            <button type="submit">Değişiklikleri Kaydet</button>
-            <button type="button" id="book-detail-cancel" class="secondary">Vazgeç</button>
+            <button type="button" id="book-detail-delete" class="danger ghost">Kitabı Sil</button>
+            <div class="detail-actions__group">
+              <button type="submit">Değişiklikleri Kaydet</button>
+              <button type="button" id="book-detail-cancel" class="secondary">Vazgeç</button>
+            </div>
           </div>
         </form>
       </div>
@@ -484,6 +505,9 @@
         </div>
       </div>
     </div>
+
+    
+    <script src="vendor/zxing.min.js"></script>
     <script src="renderer.js"></script>
   </body>
 </html>

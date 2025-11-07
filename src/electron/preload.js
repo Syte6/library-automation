@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('libraryApi', {
   getBook: (id) => invoke('books:get', { id }),
   addBook: (payload) => invoke('books:add', payload),
   updateBook: (payload) => invoke('books:update', payload),
+  deleteBook: (payload) => invoke('books:delete', payload),
   fetchBookByISBN: (isbn) => invoke('books:lookup:isbn', { isbn }),
   searchBooksByTitle: (query) => invoke('books:lookup:title', { query }),
   listCategories: () => invoke('categories:list'),

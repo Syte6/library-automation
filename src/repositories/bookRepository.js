@@ -119,6 +119,10 @@ class BookRepository {
         throw new Error(`Belirtilen kimliğe sahip kitap bulunamadı: ${id}`);
       }
 
+      const sanitized = {
+        ...updates
+      };
+
       if (updates.isbn && updates.isbn !== target.isbn) {
         const sanitizedIsbn = this.sanitizeText(updates.isbn);
         sanitized.isbn = sanitizedIsbn;
@@ -129,10 +133,6 @@ class BookRepository {
           throw new Error(`Bu ISBN numarasına sahip başka bir kitap zaten var: ${updates.isbn}`);
         }
       }
-
-      const sanitized = {
-        ...updates
-      };
 
       if (updates.publishYear !== undefined) {
         sanitized.publishYear = this.parseInteger(updates.publishYear);
@@ -210,6 +210,19 @@ class BookRepository {
     });
 
     return updatedBook;
+  }
+
+  async delete(id) {
+    let removed = null;
+    await this.store.write((state) => {
+      const index = state.books.findIndex((book) => book.id === id);
+      if (index === -1) {
+        throw new Error(`Belirtilen kimliğe sahip kitap bulunamadı: ${id}`);
+      }
+      removed = state.books.splice(index, 1)[0];
+      return state;
+    });
+    return removed;
   }
 }
 

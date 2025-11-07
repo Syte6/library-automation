@@ -13,6 +13,7 @@ const booksTableBody = document.querySelector('#books-table tbody');
 const membersTableBody = document.querySelector('#members-table tbody');
 const loansTableBody = document.querySelector('#loans-table tbody');
 const activityFeed = document.getElementById('activity-feed');
+const bookSearchInput = document.getElementById('book-search-input');
 const memberNoteInput = memberForm.querySelector('textarea[name="note"]');
 const loanNoteInput = lendForm.querySelector('textarea[name="note"]');
 
@@ -20,6 +21,9 @@ const memberHistorySelect = document.getElementById('member-history-select');
 const memberHistoryTableBody = document.querySelector('#member-history-table tbody');
 const bookHistorySelect = document.getElementById('book-history-select');
 const bookHistoryTableBody = document.querySelector('#book-history-table tbody');
+const booksInsightTotal = document.getElementById('books-insight-total');
+const booksInsightBorrowed = document.getElementById('books-insight-borrowed');
+const booksInsightCategories = document.getElementById('books-insight-categories');
 
 const coverFileInput = document.getElementById('book-cover-file');
 const coverSelectButton = document.getElementById('book-cover-select');
@@ -41,6 +45,7 @@ const bookDetailModal = document.getElementById('book-detail-modal');
 const bookDetailForm = document.getElementById('book-detail-form');
 const bookDetailCloseButton = document.getElementById('book-detail-close');
 const bookDetailCancelButton = document.getElementById('book-detail-cancel');
+const bookDetailDeleteButton = document.getElementById('book-detail-delete');
 const bookDetailMeta = document.getElementById('book-detail-meta');
 const bookDetailTitleInput = document.getElementById('book-detail-title');
 const bookDetailAuthorInput = document.getElementById('book-detail-author');
@@ -85,12 +90,15 @@ let barcodeTargetInput = null;
 let barcodeDetector = null;
 let barcodeScanActive = false;
 let barcodeFrameRequest = null;
+let zxingReader = null;
+let zxingControls = null;
 let titleSearchTimeout = null;
 let detailTitleSearchTimeout = null;
 let categoriesCache = [];
 let selectedCategoriesCreate = new Set();
 let selectedCategoriesDetail = new Set();
 let activeCategoryFilter = '';
+let activeBookSearchTerm = '';
 let unsubscribeUpdateStatus = null;
 
 const coverContexts = {
@@ -187,6 +195,39 @@ function persistThemePreference(theme) {
     localStorage.setItem(THEME_STORAGE_KEY, normalized);
   } catch (error) {
     console.warn('Tema tercihi kaydedilemedi:', error);
+  }
+}
+
+function persistBridgeSession(session) {
+  if (!session) {
+    try {
+      localStorage.removeItem(BRIDGE_STORAGE_KEY);
+    } catch (error) {
+      console.warn('Köprü oturumu silinemedi', error);
+    }
+    return;
+  }
+  try {
+    localStorage.setItem(BRIDGE_STORAGE_KEY, JSON.stringify(session));
+  } catch (error) {
+    console.warn('Köprü oturumu kaydedilemedi', error);
+  }
+}
+
+function loadBridgeSessionFromStorage() {
+  try {
+    const raw = localStorage.getItem(BRIDGE_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') {
+      return null;
+    }
+    return parsed;
+  } catch (error) {
+    console.warn('Köprü oturumu okunamadı', error);
+    return null;
   }
 }
 
@@ -440,6 +481,13 @@ if (categoryFilterSelect) {
   });
 }
 
+if (bookSearchInput) {
+  bookSearchInput.addEventListener('input', () => {
+    activeBookSearchTerm = bookSearchInput.value.trim().toLowerCase();
+    renderBooks(cachedBooks);
+  });
+}
+
 if (titleInput && titleSuggestionList) {
   titleInput.addEventListener('input', () => {
     scheduleTitleSearch('create');
@@ -469,12 +517,20 @@ if (bookDetailTitleInput && detailTitleSuggestionList) {
 }
 
 booksTableBody.addEventListener('click', async (event) => {
-  const button = event.target.closest('.book-detail-button');
-  if (!button) {
+  const detailButton = event.target.closest('.book-detail-button');
+  if (detailButton) {
+    event.preventDefault();
+    await openBookDetail(detailButton.dataset.bookId);
     return;
   }
-  event.preventDefault();
-  await openBookDetail(button.dataset.bookId);
+  const deleteButton = event.target.closest('.book-delete-button');
+  if (deleteButton) {
+    event.preventDefault();
+    if (deleteButton.disabled) {
+      return;
+    }
+    await confirmAndDeleteBook(deleteButton.dataset.bookId);
+  }
 });
 
 bookDetailCloseButton.addEventListener('click', () => {
@@ -484,6 +540,15 @@ bookDetailCloseButton.addEventListener('click', () => {
 bookDetailCancelButton.addEventListener('click', () => {
   closeBookDetail();
 });
+
+if (bookDetailDeleteButton) {
+  bookDetailDeleteButton.addEventListener('click', async () => {
+    if (!currentDetailBookId) {
+      return;
+    }
+    await confirmAndDeleteBook(currentDetailBookId, { closeModal: true });
+  });
+}
 
 bookDetailModal.addEventListener('click', (event) => {
   if (event.target === bookDetailModal) {
@@ -755,27 +820,162 @@ function openBarcodeScanner(targetInput, contextKey) {
   openCameraModal(contextKey, 'barcode');
 }
 
+function getZXingGlobal() {
+  if (typeof window === 'undefined') {
+    return undefined;
+  }
+  return window.ZXing;
+}
+
 async function startBarcodeScan() {
-  if (!('BarcodeDetector' in window)) {
-    cameraInfo.textContent = 'Tarayıcı desteği bulunamadı. Lütfen barkodu klavye ile girin.';
-    setStatus('Barkod tarama bu cihazda desteklenmiyor', 'error');
-    barcodeTargetInput = null;
-    setTimeout(() => closeCameraModal(), 1800);
+  const nativeStarted = await tryStartNativeBarcodeScan();
+  if (nativeStarted) {
     return;
   }
+
+  const fallbackStarted = await startZxingBarcodeScan();
+  if (fallbackStarted) {
+    return;
+  }
+
+  cameraInfo.textContent = 'Barkod tarama bu cihazda desteklenmiyor. Lütfen kodu elle girin.';
+  setStatus('Barkod tarama bu cihazda desteklenmiyor', 'error');
+  barcodeTargetInput = null;
+  setTimeout(() => closeCameraModal(), 1800);
+}
+
+async function tryStartNativeBarcodeScan() {
+  if (!('BarcodeDetector' in window)) {
+    return false;
+  }
+
+  let formatsToUse = [...BARCODE_FORMATS];
+  if (typeof window.BarcodeDetector.getSupportedFormats === 'function') {
+    try {
+      const supportedFormats = await window.BarcodeDetector.getSupportedFormats();
+      if (Array.isArray(supportedFormats) && supportedFormats.length > 0) {
+        const usable = formatsToUse.filter((format) => supportedFormats.includes(format));
+        if (usable.length > 0) {
+          formatsToUse = usable;
+        } else {
+          formatsToUse = supportedFormats;
+        }
+      }
+    } catch (error) {
+      console.warn('Desteklenen barkod formatları alınamadı', error);
+    }
+  }
+
+  if (!formatsToUse.length) {
+    return false;
+  }
+
   try {
-    barcodeDetector = new window.BarcodeDetector({ formats: BARCODE_FORMATS });
+    barcodeDetector = new window.BarcodeDetector({ formats: formatsToUse });
   } catch (error) {
     console.warn('BarcodeDetector başlatılamadı', error);
-    cameraInfo.textContent = 'Barkod okuyucu başlatılamadı.';
-    setStatus('Barkod okuyucu başlatılamadı', 'error');
-    barcodeTargetInput = null;
-    setTimeout(() => closeCameraModal(), 1800);
-    return;
+    barcodeDetector = null;
+    return false;
   }
+
   barcodeScanActive = true;
   cameraInfo.textContent = 'Barkodu kameraya hizalayın. Okunduğunda alan otomatik dolacak.';
   barcodeFrameRequest = requestAnimationFrame(scanBarcodeFrame);
+  return true;
+}
+
+async function startZxingBarcodeScan() {
+  const ZXing = getZXingGlobal();
+  if (!ZXing || typeof ZXing.BrowserMultiFormatReader !== 'function') {
+    return false;
+  }
+
+  if (!zxingReader) {
+    zxingReader = new ZXing.BrowserMultiFormatReader();
+    if (ZXing.DecodeHintType && ZXing.BarcodeFormat) {
+      const hintMap = new Map();
+      hintMap.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+        ZXing.BarcodeFormat.EAN_13,
+        ZXing.BarcodeFormat.EAN_8,
+        ZXing.BarcodeFormat.CODE_128,
+        ZXing.BarcodeFormat.CODE_39,
+        ZXing.BarcodeFormat.UPC_A,
+        ZXing.BarcodeFormat.QR_CODE
+      ]);
+      try {
+        zxingReader.setHints(hintMap);
+      } catch (error) {
+        console.warn('ZXing ipuçları ayarlanamadı', error);
+      }
+    }
+  } else {
+    try {
+      zxingReader.reset();
+    } catch (error) {
+      console.warn('ZXing okuyucu sıfırlanamadı', error);
+    }
+  }
+
+  barcodeScanActive = true;
+  cameraInfo.textContent = 'Barkodu kameraya hizalayın. Okunduğunda alan otomatik dolacak.';
+
+  try {
+    zxingControls = await zxingReader.decodeFromVideoDevice(
+      null,
+      cameraStreamElement,
+      (result, error, controls) => {
+        if (controls && controls !== zxingControls) {
+          zxingControls = controls;
+        }
+        if (!barcodeScanActive) {
+          return;
+        }
+        if (result) {
+          if (barcodeTargetInput) {
+            barcodeTargetInput.value = result.getText();
+            barcodeTargetInput.focus();
+            const length = barcodeTargetInput.value.length;
+            barcodeTargetInput.setSelectionRange(length, length);
+          }
+          setStatus('Barkod başarıyla okundu', 'success');
+          barcodeScanActive = false;
+          if (zxingControls) {
+            try {
+              zxingControls.stop();
+            } catch (stopError) {
+              console.warn('ZXing kontrolü durdurulamadı', stopError);
+            }
+            zxingControls = null;
+          }
+          if (zxingReader) {
+            try {
+              zxingReader.reset();
+            } catch (resetError) {
+              console.warn('ZXing okuyucu sıfırlanamadı', resetError);
+            }
+          }
+          closeCameraModal();
+          return;
+        }
+        if (error && !(error instanceof ZXing.NotFoundException)) {
+          console.warn('ZXing barkod hatası', error);
+        }
+      }
+    );
+    return true;
+  } catch (error) {
+    console.warn('ZXing barkod okuyucu başlatılamadı', error);
+    barcodeScanActive = false;
+    if (zxingControls) {
+      try {
+        zxingControls.stop();
+      } catch (stopError) {
+        console.warn('ZXing kontrolü durdurulamadı', stopError);
+      }
+      zxingControls = null;
+    }
+    return false;
+  }
 }
 
 async function scanBarcodeFrame() {
@@ -811,7 +1011,23 @@ function stopBarcodeScan() {
   }
   barcodeTargetInput = null;
   barcodeDetector = null;
+  if (zxingControls) {
+    try {
+      zxingControls.stop();
+    } catch (error) {
+      console.warn('ZXing denetimi durdurulamadı', error);
+    }
+    zxingControls = null;
+  }
+  if (zxingReader) {
+    try {
+      zxingReader.reset();
+    } catch (error) {
+      console.warn('ZXing okuyucu sıfırlanamadı', error);
+    }
+  }
 }
+
 
 async function handleCategoryAdd(contextKey) {
   const input = contextKey === 'edit' ? detailNewCategoryInput : newCategoryInput;
@@ -959,6 +1175,33 @@ function ensureCategoriesInCache(categories) {
   }
 }
 
+async function populateBookFieldsFromIsbn(isbnValue, contextKey, options = {}) {
+  const { silent = false } = options;
+  const isbn = typeof isbnValue === 'string' ? isbnValue.trim() : '';
+  if (!isbn) {
+    if (!silent) {
+      setStatus('Önce ISBN girin', 'error');
+    }
+    return;
+  }
+  try {
+    if (!silent) {
+      setStatus('ISBN bilgisi getiriliyor...', 'info');
+    }
+    const data = await api.fetchBookByISBN(isbn);
+    applyBookMetadata(contextKey, { ...data, isbn });
+    if (!silent) {
+      setStatus('Kitap bilgileri güncellendi. Düzenleyebilirsiniz.', 'success');
+    }
+  } catch (error) {
+    if (!silent) {
+      setStatus(error.message || 'ISBN bilgisi alınamadı', 'error');
+    } else {
+      console.warn('ISBN otomatik doldurma başarısız oldu', error);
+    }
+  }
+}
+
 async function handleIsbnLookup(targetInput, contextKey) {
   if (!targetInput) {
     setStatus('ISBN alanı bulunamadı', 'error');
@@ -970,13 +1213,124 @@ async function handleIsbnLookup(targetInput, contextKey) {
     targetInput.focus();
     return;
   }
+  await populateBookFieldsFromIsbn(isbn, contextKey);
+}
+
+async function confirmAndDeleteBook(bookId, options = {}) {
+  if (!bookId) {
+    return;
+  }
+  const { closeModal = false } = options;
+  const book = cachedBooks.find((item) => item.id === bookId);
+  const bookTitle = book?.title || 'Bu kitap';
+  const confirmation = window.confirm(
+    `"${bookTitle}" kitabını kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`
+  );
+  if (!confirmation) {
+    return;
+  }
   try {
-    setStatus('ISBN bilgisi getiriliyor...', 'info');
-    const data = await api.fetchBookByISBN(isbn);
-    applyBookMetadata(contextKey, data);
-    setStatus('Kitap bilgileri güncellendi. Düzenleyebilirsiniz.', 'success');
+    setStatus('Kitap siliniyor...', 'info');
+    const deleted = await api.deleteBook({ id: bookId });
+    if (
+      closeModal ||
+      (bookDetailModal &&
+        !bookDetailModal.classList.contains('hidden') &&
+        currentDetailBookId === bookId)
+    ) {
+      closeBookDetail();
+    }
+    const deletedTitle = deleted?.title || bookTitle;
+    setStatus(`"${deletedTitle}" katalogdan silindi`, 'success');
+    await refreshData();
   } catch (error) {
-    setStatus(error.message || 'ISBN bilgisi alınamadı', 'error');
+    setStatus(error.message || 'Kitap silinemedi', 'error');
+  }
+}
+
+function collectMetadataAuthors(metadata) {
+  if (Array.isArray(metadata?.authors) && metadata.authors.length > 0) {
+    return metadata.authors;
+  }
+  if (typeof metadata?.author === 'string') {
+    return [metadata.author];
+  }
+  return [];
+}
+
+function resolveMetadataPageCount(metadata = {}) {
+  const candidates = [
+    metadata.pageCount,
+    metadata.numberOfPages,
+    metadata.number_of_pages,
+    metadata.numberOfPagesMedian,
+    metadata.number_of_pages_median
+  ];
+  for (const candidate of candidates) {
+    const numeric = Number(candidate);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return numeric;
+    }
+  }
+  return null;
+}
+
+function deriveMetadataNote(metadata = {}) {
+  const parts = [];
+  if (metadata.subtitle) {
+    parts.push(metadata.subtitle);
+  }
+  if (metadata.description) {
+    if (typeof metadata.description === 'string') {
+      parts.push(metadata.description);
+    } else if (Array.isArray(metadata.description)) {
+      parts.push(metadata.description.filter(Boolean).join('\n'));
+    } else if (typeof metadata.description.value === 'string') {
+      parts.push(metadata.description.value);
+    }
+  }
+  return parts.join('\n\n').trim();
+}
+
+function collectMetadataCategories(metadata = {}) {
+  const rawSubjects = [];
+  if (Array.isArray(metadata.subjects)) {
+    rawSubjects.push(...metadata.subjects);
+  }
+  if (Array.isArray(metadata.subject)) {
+    rawSubjects.push(...metadata.subject);
+  }
+  const normalized = rawSubjects
+    .map((value) => {
+      if (typeof value === 'string') {
+        return value.trim();
+      }
+      if (value && typeof value.name === 'string') {
+        return value.name.trim();
+      }
+      return '';
+    })
+    .filter(Boolean);
+  return Array.from(new Set(normalized)).slice(0, 4);
+}
+
+function applyMetadataCategories(contextKey, categories) {
+  if (!categories || categories.length === 0) {
+    return;
+  }
+  ensureCategoriesInCache(categories);
+  const targetSet =
+    contextKey === 'edit' ? selectedCategoriesDetail : selectedCategoriesCreate;
+  let changed = false;
+  categories.forEach((category) => {
+    if (!targetSet.has(category)) {
+      targetSet.add(category);
+      changed = true;
+    }
+  });
+  if (changed) {
+    renderCategoryChips('create');
+    renderCategoryChips('edit');
   }
 }
 
@@ -985,37 +1339,45 @@ function applyBookMetadata(contextKey, metadata) {
     return;
   }
   const publishYear = parsePublishYear(metadata.publishDate || metadata.publishYear);
-  const pageCount = metadata.numberOfPages && Number.isFinite(metadata.numberOfPages)
-    ? metadata.numberOfPages
-    : null;
-  const publisherName = Array.isArray(metadata.publishers) && metadata.publishers.length > 0
-    ? metadata.publishers[0]
-    : metadata.publisher || null;
+  const pageCount = resolveMetadataPageCount(metadata);
+  const publisherName =
+    (Array.isArray(metadata.publishers) && metadata.publishers[0]) ||
+    metadata.publisher ||
+    null;
+  const authors = collectMetadataAuthors(metadata);
+  const autoNote = deriveMetadataNote(metadata);
+  const autoCategories = collectMetadataCategories(metadata);
 
   if (contextKey === 'edit') {
     if (metadata.title) {
       bookDetailTitleInput.value = metadata.title;
     }
-    if (metadata.authors && metadata.authors.length > 0) {
-      bookDetailAuthorInput.value = metadata.authors.join(', ');
+    if (authors.length > 0) {
+      bookDetailAuthorInput.value = authors.join(', ');
     }
-    if (pageCount) {
+    if (pageCount && bookDetailPageCountInput) {
       bookDetailPageCountInput.value = pageCount;
     }
-    if (publishYear) {
+    if (publishYear && bookDetailPublishYearInput) {
       bookDetailPublishYearInput.value = publishYear;
     }
-    if (publisherName) {
+    if (publisherName && bookDetailPublisherInput) {
       bookDetailPublisherInput.value = publisherName;
     }
+    if (metadata.isbn && bookDetailIsbnInput) {
+      bookDetailIsbnInput.value = metadata.isbn;
+    }
+    if (autoNote && bookDetailNoteInput && !bookDetailNoteInput.value.trim()) {
+      bookDetailNoteInput.value = autoNote;
+    }
   } else {
-    if (metadata.title) {
+    if (metadata.title && titleInput) {
       titleInput.value = metadata.title;
     }
-    if (metadata.authors && metadata.authors.length > 0) {
-      const authorField = bookForm.querySelector('input[name="author"]');
+    if (authors.length > 0) {
+      const authorField = bookForm.querySelector('input[name=\"author\"]');
       if (authorField) {
-        authorField.value = metadata.authors.join(', ');
+        authorField.value = authors.join(', ');
       }
     }
     if (pageCount && pageCountInput) {
@@ -1027,11 +1389,15 @@ function applyBookMetadata(contextKey, metadata) {
     if (publisherName && publisherInput) {
       publisherInput.value = publisherName;
     }
+    if (metadata.isbn && isbnInput) {
+      isbnInput.value = metadata.isbn;
+    }
+    if (autoNote && bookNoteInput && !bookNoteInput.value.trim()) {
+      bookNoteInput.value = autoNote;
+    }
   }
 
-  if (metadata.subtitle) {
-    setStatus(`${metadata.title} (${metadata.subtitle}) bilgisi yüklendi`, 'info');
-  }
+  applyMetadataCategories(contextKey, autoCategories);
 }
 
 function scheduleTitleSearch(contextKey) {
@@ -1079,11 +1445,15 @@ function renderTitleSuggestions(contextKey, results) {
   results.forEach((item) => {
     const option = document.createElement('div');
     option.className = 'suggestion-item';
+    const metaParts = [
+      item.authors && item.authors.length ? item.authors.join(', ') : null,
+      item.publisher || null,
+      item.publishYear || null,
+      item.pageCount ? `${item.pageCount} sf` : null
+    ].filter(Boolean);
     option.innerHTML = `
       <span class="title">${item.title}</span>
-      <span class="meta">${[item.authors && item.authors.join(', '), item.publisher, item.publishYear]
-        .filter(Boolean)
-        .join(' • ')}</span>
+      <span class="meta">${metaParts.join(' • ')}</span>
     `;
     option.addEventListener('mousedown', (event) => {
       event.preventDefault();
@@ -1097,39 +1467,20 @@ function renderTitleSuggestions(contextKey, results) {
 }
 
 function applySuggestionSelection(contextKey, item) {
-  if (contextKey === 'edit') {
-    bookDetailTitleInput.value = item.title || '';
-    if (item.authors && item.authors.length > 0) {
-      bookDetailAuthorInput.value = item.authors.join(', ');
-    }
-    if (item.isbn) {
-      bookDetailIsbnInput.value = item.isbn;
-    }
-    if (item.publishYear) {
-      bookDetailPublishYearInput.value = item.publishYear;
-    }
-    if (item.publisher) {
-      bookDetailPublisherInput.value = item.publisher;
-    }
-    detailTitleSuggestionList.classList.add('hidden');
-    detailTitleSuggestionList.innerHTML = '';
-  } else {
-    titleInput.value = item.title || '';
-    const authorField = bookForm.querySelector('input[name="author"]');
-    if (authorField && item.authors && item.authors.length > 0) {
-      authorField.value = item.authors.join(', ');
-    }
-    if (isbnInput && item.isbn) {
-      isbnInput.value = item.isbn;
-    }
-    if (publishYearInput && item.publishYear) {
-      publishYearInput.value = item.publishYear;
-    }
-    if (publisherInput && item.publisher) {
-      publisherInput.value = item.publisher;
-    }
-    titleSuggestionList.classList.add('hidden');
-    titleSuggestionList.innerHTML = '';
+  if (!item) {
+    return;
+  }
+  applyBookMetadata(contextKey, item);
+  const suggestionList =
+    contextKey === 'edit' ? detailTitleSuggestionList : titleSuggestionList;
+  if (suggestionList) {
+    suggestionList.classList.add('hidden');
+    suggestionList.innerHTML = '';
+  }
+  if (item.isbn) {
+    populateBookFieldsFromIsbn(item.isbn, contextKey, { silent: true }).catch((error) =>
+      console.warn('Başlık seçimi için ISBN bilgisi alınamadı', error)
+    );
   }
 }
 
@@ -1203,7 +1554,45 @@ function renderStats(books, members, loans) {
   statsRefs.activeLoans.textContent = activeLoans;
 }
 
+function updateBookInsights(books) {
+  if (!booksInsightTotal || !booksInsightBorrowed || !booksInsightCategories) {
+    return;
+  }
+  const borrowedCopies = books.reduce(
+    (acc, book) =>
+      acc +
+      Math.max(0, (book.totalCopies || 0) - (book.availableCopies || 0)),
+    0
+  );
+  const categorySet = new Set();
+  books.forEach((book) => {
+    if (Array.isArray(book.categories)) {
+      book.categories.forEach((category) => categorySet.add(category));
+    }
+  });
+  booksInsightTotal.textContent = books.length;
+  booksInsightBorrowed.textContent = borrowedCopies;
+  booksInsightCategories.textContent = categorySet.size;
+}
+
+function matchesBookSearch(book, term) {
+  if (!term) {
+    return true;
+  }
+  const haystack = [
+    book.title,
+    book.author,
+    book.isbn,
+    book.publisher
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes(term);
+}
+
 function renderBooks(books) {
+  updateBookInsights(books);
   booksTableBody.innerHTML = '';
   bookSelect.innerHTML = '';
   const allBooksSorted = books
@@ -1219,21 +1608,25 @@ function renderBooks(books) {
       bookSelect.appendChild(option);
     });
 
-  const filtered = activeCategoryFilter
-    ? books.filter(
-        (book) =>
-          Array.isArray(book.categories) && book.categories.includes(activeCategoryFilter)
-      )
-    : books;
+  const filtered = books.filter((book) => {
+    const matchesCategory =
+      !activeCategoryFilter ||
+      (Array.isArray(book.categories) && book.categories.includes(activeCategoryFilter));
+    const matchesSearch = matchesBookSearch(book, activeBookSearchTerm);
+    return matchesCategory && matchesSearch;
+  });
 
   const sortedBooks = filtered
     .slice()
     .sort((a, b) => a.title.localeCompare(b.title, 'tr', { sensitivity: 'base' }));
 
   if (sortedBooks.length === 0) {
-    const emptyMessage = activeCategoryFilter
-      ? 'Bu kategoriye ait kitap bulunamadı'
-      : 'Henüz katalogda kitap yok';
+    let emptyMessage = 'Henüz katalogda kitap yok';
+    if (activeCategoryFilter && !activeBookSearchTerm) {
+      emptyMessage = 'Bu kategoriye ait kitap bulunamadı';
+    } else if (activeBookSearchTerm) {
+      emptyMessage = 'Arama kriterlerine uygun kitap bulunamadı';
+    }
     renderEmptyState(booksTableBody, emptyMessage, 7);
   } else {
     sortedBooks.forEach((book) => {
@@ -1242,6 +1635,10 @@ function renderBooks(books) {
         : '<div class="cover-placeholder">Kapak yok</div>';
       const categoriesMarkup = formatCategories(book.categories);
       const noteMarkup = book.note ? `<div class="table-sub">${book.note}</div>` : '';
+      const deleteDisabled = book.availableCopies < book.totalCopies;
+      const deleteTitle = deleteDisabled
+        ? 'Ödünçte olan kitap silinemez'
+        : 'Kitabı kalıcı olarak sil';
       const row = document.createElement('tr');
       row.innerHTML = `
           <td><div class="cover-thumb">${coverContent}</div></td>
@@ -1250,7 +1647,19 @@ function renderBooks(books) {
           <td>${book.isbn}</td>
           <td>${book.availableCopies}</td>
           <td>${book.totalCopies}</td>
-          <td><button class="link-button book-detail-button" data-book-id="${book.id}">Detay</button></td>
+          <td>
+            <div class="table-actions">
+              <button class="link-button book-detail-button" data-book-id="${book.id}">Detay</button>
+              <button
+                class="link-button danger book-delete-button"
+                data-book-id="${book.id}"
+                ${deleteDisabled ? 'disabled' : ''}
+                title="${deleteTitle}"
+              >
+                Sil
+              </button>
+            </div>
+          </td>
         `;
       booksTableBody.appendChild(row);
     });
@@ -1707,12 +2116,6 @@ document.addEventListener('click', (event) => {
     target !== bookDetailTitleInput
   ) {
     detailTitleSuggestionList.classList.add('hidden');
-  }
-});
-
-window.addEventListener('beforeunload', () => {
-  if (typeof unsubscribeUpdateStatus === 'function') {
-    unsubscribeUpdateStatus();
   }
 });
 

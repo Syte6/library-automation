@@ -40,12 +40,23 @@ async function run() {
   const booksAfterLoan = await service.listBooks();
   assert.strictEqual(booksAfterLoan[0].availableCopies, 2);
 
+  await assert.rejects(
+    () => service.deleteBook(book.id),
+    /Ödünçte olan kitap silinemez/
+  );
+
   const returned = await service.returnBook(loan.id);
   assert.strictEqual(returned.status, 'returned');
 
   const loans = await service.listLoans();
   assert.strictEqual(loans.length, 1);
   assert.strictEqual(loans[0].status, 'returned');
+
+  const deleted = await service.deleteBook(book.id);
+  assert.strictEqual(deleted.id, book.id);
+
+  const booksAfterDelete = await service.listBooks();
+  assert.strictEqual(booksAfterDelete.length, 0);
 
   if (fs.existsSync(testDataPath)) {
     fs.unlinkSync(testDataPath);
